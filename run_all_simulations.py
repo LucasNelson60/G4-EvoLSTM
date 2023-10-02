@@ -307,6 +307,51 @@ def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index,
         
         output_file.write(f"UNIVERSAL,{ancestral_seq_name},{real_match_rate},{num_recursions},{sum_num_G4CRs/100},{sum_sim_match_rate/100},{sum_max_ntot/100},{sum_sum_ntots/100},{sum_max_ntand/100},{sum_sum_ntands/100},{sum_max_Tm_max/100},{sum_max_Tm_median/100},{sum_max_Tm_min/100},{sum_sum_G4CR_length/100},{sum_max_G4CR_length/100},{sum_avg_g_percentage/100},{sum_max_g_percentage/100}\n")
 
+def desimulate_output_seq(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, desimulating_distance):
+    
+    for k in range(100): # iterate through each of the simulations
+        
+        # Split the lists to be able to replace mutations as needed
+        aligned_ancestor = aligned_ancestors_for_this_G4CR[k]
+        sim_output = sim_output_seqs_for_this_G4CR[k]
+        
+        new_aligned_ancestor = []
+        new_sim_output = []
+        
+        reversing_indel = False
+        
+        for j in range(len(aligned_ancestor)):
+            
+            ancestor_char = aligned_ancestor[j]
+            sim_char = sim_output[j]
+            
+            if ancestor_char == "-" or sim_char == "-": # insertion/deletion (indel)
+                if reversing_indel:
+                    continue
+                elif random.random() <= desimulating_distance:
+                        reversing_indel = True
+                else:
+                    new_aligned_ancestor.append(ancestor_char)
+                    new_sim_output.append(sim_char)
+                    
+            elif ancestor_char != sim_char: # substitution
+                if random.random() <= desimulating_distance:
+                    new_sim_output.append(ancestor_char)
+                else:
+                    new_sim_output.append(sim_output)
+                new_aligned_ancestor.append(ancestor_char)
+                
+            elif ancestor_char == sim_char:
+                new_aligned_ancestor.append(ancestor_char)
+                new_sim_output.append(sim_char)
+                
+                if reversing_indel:
+                    reversing_indel = False
+        
+        # Replace simulations for this G4CR after de-simulating them by desired branch length
+        aligned_ancestors_for_this_G4CR[k] = new_aligned_ancestor
+        sim_output_seqs_for_this_G4CR[k] = new_sim_output
+
 def main():
     '''
     BASIC IDEA -> start by assembling the input string of 100 * each G4CR input (from files)
@@ -331,10 +376,7 @@ def main():
     for i in range(len(aligned_ancestral_G4CRs)): # 100 simulation inputs for each G4CR
         sim_input_seqs.extend([aligned_ancestral_G4CRs[i] for _ in range(100)])
         
-    aligned_ancestral_G4CRs = sim_input_seqs.copy() # Will be progressively aligned to simulation outputs at each recursion
-
-    # Use prev_match_rates at each iteration of the main while-loop to compare whether previous recursion or new recursion yields closer match rate to real_match_rate
-    prev_match_rates = [1.0 for _ in range(len(sim_input_seqs))] # length = num_G4CRs * 100     
+    aligned_ancestral_G4CRs = sim_input_seqs.copy() # Will be progressively aligned to simulation outputs at each recursion 
     sim_input_seqs = "3333333333".join(sim_input_seqs) # length = num_G4CRs * 100
     
     num_recursions = 0
@@ -346,9 +388,7 @@ def main():
         aligned_ancestral_G4CRs = "3333333333".split(aligned_ancestral_G4CRs)
         sim_output_seqs = "3333333333".split(sim_output_seqs)
         new_match_rates = get_new_match_rates(aligned_ancestral_G4CRs, sim_output_seqs) # Always relative to real ancestors
-        
 
-        new_prev_match_rates = []
         new_sim_output_seqs = []
         new_aligned_ancestral_G4CRs = []
         
@@ -357,16 +397,13 @@ def main():
         new_real_match_rates = []
         new_ancestral_seq_names = []
         
-        for i in range(100, len(prev_match_rates), 100):
-            
-            prev_match_rates_for_this_G4CR = [prev_match_rates[k] for k in range(i-100, i)]
+        for i in range(100, len(new_match_rates), 100):
+
             new_match_rates_for_this_G4CR = [new_match_rates[j] for j in range(i-100, i)]
-            
-            avg_prev_match_rate = sum(prev_match_rates_for_this_G4CR)/100
+
             avg_new_match_rate = sum(new_match_rates_for_this_G4CR)/100
             real_match_rate = real_match_rates[int(i/100)]
-            
-            sim_input_seqs_for_this_G4CR = [sim_input_seqs[a] for a in range(i-100,i)]
+
             sim_output_seqs_for_this_G4CR = [sim_output_seqs[l] for l in range(i-100,i)]
             aligned_ancestors_for_this_G4CR = [aligned_ancestral_G4CRs[b] for b in range(i-100,i)]
             
@@ -374,35 +411,35 @@ def main():
             ancestral_seq_name = ancestral_seq_names[int(i/100)]
             start_index = start_and_end_indices[int(i/100)][0]
             end_index = start_and_end_indices[int(i/100)][1]
+
+            if real_match_rate == avg_new_match_rate: 
+                write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, sim_output_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions)
             
-            real_prev_diff = abs(real_match_rate - avg_prev_match_rate)
-            real_new_diff = abs(real_match_rate - avg_new_match_rate)
-            
-            if real_prev_diff > real_new_diff: # New match rate is closer to real than previous one, hence keep sim in sim_input_seqs
+            elif real_match_rate > avg_new_match_rate:
                 # BELOW: Preserve all the data for the G4CRs we will be analyzing in the next recursive call
                 new_sim_output_seqs.extend(sim_output_seqs_for_this_G4CR)
-                new_prev_match_rates.extend(new_match_rates_for_this_G4CR)
                 new_aligned_ancestral_G4CRs.extend(aligned_ancestors_for_this_G4CR)
                 
                 new_gene_names.append(gene_name)
                 new_ancestral_seq_names.append(ancestral_seq_name)
                 new_start_and_end_indices.append((start_index, end_index))
                 new_real_match_rates.append(real_match_rate)
+
+            elif avg_new_match_rate > real_match_rate: # DE-SIMULATION
                 
-            # FOR ALL CASES BELOW: New match rate is further from real than previous one (or equal), hence remove sim from sim_input_seqs
-            elif real_match_rate == avg_prev_match_rate: 
-                write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, sim_input_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions)
-            elif real_match_rate > avg_prev_match_rate:
-                pass
-            elif avg_prev_match_rate > real_match_rate:
-                pass
+                # For every single mutation (insertion/deletion/substitution), reject it with a probability of x
+                # Where "x" is the difference between the real match rate and the average of the match rates of the simulation outputs
+                real_sim_match_rate_diff = abs(avg_new_match_rate - real_match_rate) # use this to determine probability of reverting mutations
+                
+                # No output, modifies the aligned ancestors and sim output sequences in-place (mutable objects)
+                desimulate_output_seq(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, real_sim_match_rate_diff)
+                write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, sim_output_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions)
+              
                 
         num_recursions += 1
         
         sim_input_seqs = "3333333333".join(new_sim_output_seqs)
         aligned_ancestral_G4CRs = new_aligned_ancestral_G4CRs
-        
-        prev_match_rates = new_prev_match_rates
         real_match_rates = new_real_match_rates
         
         gene_names = new_gene_names
