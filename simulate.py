@@ -5,6 +5,7 @@ from joblib import load
 import os
 from tqdm import tqdm
 import gc
+import pickle
 
 def decode_sequence(input_seq, encoder_model, decoder_model, encode_dimension, context_length, onehot_encoder, label_encoder):
     length = len(input_seq)
@@ -59,27 +60,28 @@ def simulate(gpu, anc):
 
     anc = np.array(list(anc+'0'))
     des = np.array(list(des+'0'))
-    
-    label_encoder = load('/home/mcb/users/dlim63/research/alignment/label_encoder.joblib') 
-    onehot_encoder = load('/home/mcb/users/dlim63/research/alignment/onehot_encoder.joblib') 
-    
-    integer_encoded_des = label_encoder.transform(des)
-    integer_encoded_anc = label_encoder.transform(anc)
-    integer_des = integer_encoded_des.reshape(len(integer_encoded_des), 1)
-    encoded_des =onehot_encoder.transform(integer_des)
-    integer_anc = integer_encoded_anc.reshape(len(integer_encoded_anc), 1)
-    encoded_anc = onehot_encoder.transform(integer_anc)
+    with open('/home/mcb/users/dlim63/research/alignment/label_encoder_lucas.pickle', 'rb') as label_encoder_pickle, open('/home/mcb/users/dlim63/research/alignment/onehot_encoder_lucas.pickle', 'rb') as onehot_encoder_pickle:
 
-    encode_dimension= len(encoded_des[0])
-    encoder_model = load_model("/home/mcb/users/dlim63/research/models/E_insert3__HPGPNRMPC_hg38_10.h5")
-    decoder_model = load_model("/home/mcb/users/dlim63/research/models/D_insert3__HPGPNRMPC_hg38_10.h5")
-    decoded_seq = decode_sequence(encoded_anc, encoder_model, decoder_model, encode_dimension, context_length, onehot_encoder, label_encoder)
-
-    del encoder_model
-    del decoder_model
-    gc.collect()
-
-    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-    clear_session()
+        label_encoder = pickle.load(label_encoder_pickle)
+        onehot_encoder = pickle.load(onehot_encoder_pickle)
     
-    return decoded_seq
+        integer_encoded_des = label_encoder.transform(des)
+        integer_encoded_anc = label_encoder.transform(anc)
+        integer_des = integer_encoded_des.reshape(len(integer_encoded_des), 1)
+        encoded_des =onehot_encoder.transform(integer_des)
+        integer_anc = integer_encoded_anc.reshape(len(integer_encoded_anc), 1)
+        encoded_anc = onehot_encoder.transform(integer_anc)
+
+        encode_dimension= len(encoded_des[0])
+        encoder_model = load_model("/home/mcb/users/dlim63/research/models/E_insert3__HPGPNRMPC_hg38_10.h5")
+        decoder_model = load_model("/home/mcb/users/dlim63/research/models/D_insert3__HPGPNRMPC_hg38_10.h5")
+        decoded_seq = decode_sequence(encoded_anc, encoder_model, decoder_model, encode_dimension, context_length, onehot_encoder, label_encoder)
+
+        del encoder_model
+        del decoder_model
+        gc.collect()
+
+        os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        clear_session()
+        
+        return decoded_seq
