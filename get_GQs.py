@@ -1,3 +1,4 @@
+# AUTHORS: Amos Zhang and Christopher Hennecker
 import math
 
 def get_GQs(max_loop, max_bulge, min_Tm):

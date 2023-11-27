@@ -1,3 +1,4 @@
+# AUTHORS: Amos Zhang and Christopher Hennecker
 import numpy as np
 from analyze_seq import analyze_seq
 

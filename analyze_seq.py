@@ -1,3 +1,4 @@
+# AUTHORS: Amos Zhang and Christopher Hennecker
 import numpy as np
 
 def analyze_seq(seq, GQs, scores, startI):
