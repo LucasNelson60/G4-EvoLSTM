@@ -6,6 +6,7 @@ import numpy as np
 from simulate import simulate
 from G4_greg import main as greg_main
 from get_GQs import get_GQs
+import copy
 
 ANCESTRAL_GENOMES = ['_HP', '_HPG', '_HPGP', '_HPGPN', '_HPGPNRMPC', '_HPGPNRMPCCS', '_HPGPNRMPCCSO', '_HPGPNRMPCCSOT', '_HPGPNRMPCCSOTSJMCMMRHCCOOO', '_HPGPNRMPCCSOTSJMCMMRHCCOOOSVCTOPBOCECFCMAOLPPEMMESC', '_HPGPNRMPCCSOTSJMCMMRHCCOOOSVCTOPBOCECFCMAOLPPEMMESCLETCEOD']
 ANCESTRAL_GENOMES.reverse()
@@ -239,8 +240,9 @@ def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index,
         sum_avg_g_percentage = 0.0
         sum_max_g_percentage = 0
         
-        print(f"outputting G4CR: {gene_name}_{start_index}_{end_index} for ancestor {ancestral_seq_name}")
-        
+        # print(f"outputting G4CR: {gene_name}_{start_index}_{end_index} for ancestor {ancestral_seq_name}")
+
+        seq_counter = 0
         for z in range(len(sim_input_seqs_for_this_G4CR)):
             
             if z in local_skipped_indices: # Simulation with undefined output
@@ -249,23 +251,24 @@ def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index,
             sim_input_seq = sim_input_seqs_for_this_G4CR[z] # Use input, not output, because its branch length is closer to the real one
             aligned_ancestor = aligned_ancestors_for_this_G4CR[z]
             
-            ungapped_length = 0
-            k = 0
+            # Split the lists to be able to replace mutations as needed
+            aligned_ancestor = aligned_ancestors_for_this_G4CR[z]
+            sim_input = sim_input_seqs_for_this_G4CR[z]
+            
             matches = 0
-            while k < len(aligned_ancestor):
-                if sim_input_seq[k] not in NTS:
-                    k += 1
-                    continue
-                elif sim_input_seq[k] == aligned_ancestor[k]:
+            ungapped_length = 0
+            for j in range(len(aligned_ancestor)):
+                if aligned_ancestor[j] != "-" and aligned_ancestor[j] == sim_input[j]:
                     matches += 1
-                ungapped_length += 1
-                k += 1
+                if aligned_ancestor[j] != "-" and sim_input[j] != "-":
+                    ungapped_length += 1
             
             # Skip simulations that have zero ungapped_length, i.e., that consist of all "-" characters, to avoid ZeroDivisionError below
             if ungapped_length == 0:
                 continue
 
             sim_match_rate = matches/ungapped_length
+            seq_counter += 1
             
             # Run GReg on the simulation output
             gapless_output = "".join([nt for nt in sim_input_seq if nt != "-"])
@@ -287,8 +290,26 @@ def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index,
             sum_max_G4CR_length += int(max_G4CR_length)
             sum_avg_g_percentage += float(avg_g_percentage)
             sum_max_g_percentage += int(max_g_percentage)
-        
-        output_file.write(f"UNIVERSAL,{ancestral_seq_name},{real_match_rate},{num_recursions},{sum_num_G4CRs/1000},{sum_sim_match_rate/1000},{sum_max_ntot/1000},{sum_sum_ntots/1000},{sum_max_ntand/1000},{sum_sum_ntands/1000},{sum_max_Tm_max/1000},{sum_max_Tm_median/1000},{sum_max_Tm_min/1000},{sum_sum_G4CR_length/1000},{sum_max_G4CR_length/1000},{sum_avg_g_percentage/1000},{sum_max_g_percentage/1000}\n")
+            
+        try:
+            avg_num_G4CRs = sum_num_G4CRs/seq_counter
+            avg_sim_match_rate = sum_sim_match_rate/seq_counter
+            avg_max_ntot = sum_max_ntot/seq_counter
+            avg_sum_ntots = sum_sum_ntots/seq_counter
+            avg_max_ntand = sum_max_ntand/seq_counter
+            avg_sum_ntands = sum_sum_ntands/seq_counter
+            avg_max_Tm_max = sum_max_Tm_max/seq_counter
+            avg_max_Tm_median = sum_max_Tm_median/seq_counter
+            avg_max_Tm_min = sum_max_Tm_min/seq_counter
+            avg_sum_G4CR_length = sum_sum_G4CR_length/seq_counter
+            avg_max_G4CR_length = sum_max_G4CR_length/seq_counter
+            avg_avg_g_percentage = sum_avg_g_percentage/seq_counter
+            avg_max_g_percentage = sum_max_g_percentage/seq_counter
+        except ZeroDivisionError:
+            return
+        print(f"Final match rate of {avg_sim_match_rate} calculated for ancestor {ancestral_seq_name}")
+        print()
+        output_file.write(f"UNIVERSAL,{ancestral_seq_name},{real_match_rate},{num_recursions},{avg_num_G4CRs},{avg_sim_match_rate},{avg_max_ntot},{avg_sum_ntots},{avg_max_ntand},{avg_sum_ntands},{avg_max_Tm_max},{avg_max_Tm_median},{avg_max_Tm_min},{avg_sum_G4CR_length},{avg_max_G4CR_length},{avg_avg_g_percentage},{avg_max_g_percentage}\n")
 
 def calc_match_rate(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, local_skipped_indices):
 
@@ -319,7 +340,7 @@ def calc_match_rate(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4
     if len(new_sim_match_rates) == 0:
         return -1
     return sum(new_sim_match_rates) / len(new_sim_match_rates)
-
+    
 def desimulate_output_seq(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, desimulating_distance, local_skipped_indices):
     
     for k in range(len(sim_output_seqs_for_this_G4CR)): # iterate through each of the simulations
@@ -392,7 +413,6 @@ def main():
     GQs, scores = get_GQs(MAX_LOOP, MAX_BULGE, MIN_TEMP)
     
     chrom_filepath = f"/home/mcb/users/lnelso12/evoGReg/outputs_filtered/chr{chrom}"
-    # chrom_filepath = f"/home/mcb/users/lnelso12/G4_EvoLSTM/debugging_inputs2"
     
     # NOTE THAT EVERY OUTPUT OF THIS FUNCTION IS G4CR-INDEXED AND OF THE SAME LENGTH
     gene_names, aligned_ancestral_G4CRs, start_and_end_indices, real_match_rates, ancestral_seq_names = read_input_files(chrom_filepath)
@@ -446,7 +466,6 @@ def main():
                 continue # These will be set aside and skipped to be studied individually in closer detail
             
             # The attributes below are different for every simulation
-            avg_new_match_rate = sum([x for x in new_match_rates_for_this_G4CR if x != -1.0])/num_new_match_rates
             sim_output_seqs_for_this_G4CR = [sim_output_seqs[l] for l in range(i-1000,i)]
             aligned_ancestors_for_this_G4CR = [aligned_ancestral_G4CRs[b] for b in range(i-1000,i)]
             
@@ -455,6 +474,8 @@ def main():
             gene_name = gene_names[int(i/1000)-1]
             start_index = int(start_and_end_indices[int(i/1000)-1][0])
             end_index = int(start_and_end_indices[int(i/1000)-1][1])
+            
+            avg_new_match_rate = calc_match_rate(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, local_skipped_indices)
             
             keys_to_remove = []
             for ancestral_seq_name in real_match_rates_for_this_G4CR.keys():
@@ -466,29 +487,27 @@ def main():
                     keys_to_remove.append(ancestral_seq_name)
                     
                 elif real_match_rate > avg_new_match_rate: # DE-SIMULATION
-                    print()
-                    print(f"For ancestor {ancestral_seq_name}, the real_match_rate {real_match_rate} is higher than the avg_new_match_rate {avg_new_match_rate}")
-                    # For every single mutation (insertion/deletion/substitution), reject it with a probability of x
-                    # Where "x" is the difference between the real match rate and the average of the match rates of the simulation outputs
-                    real_sim_match_rate_diff = abs(avg_new_match_rate - real_match_rate) # use this to determine probability of reverting mutations
-                    # No output, modifies the aligned ancestors and sim output sequences in-place (mutable objects)
-                    print(f"For ancestor {ancestral_seq_name}, the real_sim_match_rate_diff is {real_sim_match_rate_diff}, which is the desimulation target")
+                    # print(f"Real match rate of {real_match_rate} calculated for ancestor {ancestral_seq_name}")
+                    # print(f"Match rate of {avg_new_match_rate} calculated for ancestor {ancestral_seq_name} on iteration number 0")
                     
-                    desimulated_aligned_ancestors_for_this_G4CR = aligned_ancestors_for_this_G4CR.copy()
-                    desimulated_sim_output_seqs_for_this_G4CR = sim_output_seqs_for_this_G4CR.copy()
-                    desimulate_output_seq(desimulated_aligned_ancestors_for_this_G4CR, desimulated_sim_output_seqs_for_this_G4CR, real_sim_match_rate_diff, local_skipped_indices)
-                    avg_new_sim_match_rates = calc_match_rate(desimulated_aligned_ancestors_for_this_G4CR, desimulated_sim_output_seqs_for_this_G4CR, local_skipped_indices)
-                    print(f"For ancestor {ancestral_seq_name}, the new avg_new_sim_match_rates is {avg_new_sim_match_rates}")
+                    desimulated_aligned_ancestors_for_this_G4CR = copy.deepcopy(aligned_ancestors_for_this_G4CR)
+                    desimulated_sim_output_seqs_for_this_G4CR = copy.deepcopy(sim_output_seqs_for_this_G4CR)
                     
+                    avg_new_sim_match_rates = avg_new_match_rate
+                    
+                    desimulating_distance = 0.01
                     if avg_new_sim_match_rates == -1:
                         continue
+                    
                     counter = 0
                     while real_match_rate > avg_new_sim_match_rates: # THIS LOOP ENSURES THAT MATCH RATE AVERAGES ARE ALWAYS SLIGHTLY HIGHER FOR SIMS THAN REAL SEQS. Ensures we are conservative.
                         counter += 1
-                        desimulate_output_seq(desimulated_aligned_ancestors_for_this_G4CR, desimulated_sim_output_seqs_for_this_G4CR, 0.005, local_skipped_indices)
+                        desimulate_output_seq(desimulated_aligned_ancestors_for_this_G4CR, desimulated_sim_output_seqs_for_this_G4CR, desimulating_distance, local_skipped_indices)
                         avg_new_sim_match_rates = calc_match_rate(desimulated_aligned_ancestors_for_this_G4CR, desimulated_sim_output_seqs_for_this_G4CR, local_skipped_indices)
+                        # print(f"Match rate of {avg_new_sim_match_rates} calculated for ancestor {ancestral_seq_name} on iteration number {counter}")
                         if counter == 500 or avg_new_sim_match_rates == -1:
                             break
+                        desimulating_distance += 0.01
                         
                     write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, desimulated_sim_output_seqs_for_this_G4CR, desimulated_aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices)
                     keys_to_remove.append(ancestral_seq_name)
