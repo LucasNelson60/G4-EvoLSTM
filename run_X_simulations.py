@@ -46,11 +46,19 @@ def read_input_files(chrom_filepath):
     Reads the contents of the directory and returns the data for each gene/G4CR (depending on output) in list format
     '''
     # One-to-one correspondence between the two following lists (same lengths)
+    gene_names = [] 
     start_and_end_indices = []
-    ancestral_G4CR_regions = []
     real_match_rates = []
-    ancestral_seq_names = []
-    gene_names = []    
+    oldest_ancestral_G4CRs = []
+    poly_vals = []
+    G4CR_lengths = []
+    g_percentages = []
+    ntots = []
+    ntands = []
+    tm_maxes = []
+    tm_medians = []
+    tm_mins = []
+    ancestral_G4CR_regions = []
 
     for input_file in os.listdir(chrom_filepath):
         
@@ -72,58 +80,55 @@ def read_input_files(chrom_filepath):
 
         with open(input_filepath, "r") as input_file:
             
-            # Extract data for all the G4CRs and ancestral sequences + match rates in the given gene's input file
+            match_rates_for_this_G4CR = []
+            poly_vals_for_this_G4CR = []
+            this_G4CR_lengths = []
+            g_percentages_for_this_G4CR = []
+            ntots_for_this_G4CR = []
+            ntands_for_this_G4CR = []
+            tm_maxes_for_this_G4CR = []
+            tm_medians_for_this_G4CR = []
+            tm_mins_for_this_G4CR = []
+            ancestral_regions_for_this_G4CR = []
             
-            ancestral_aligned_sequences = {}
-            ancestral_match_rates = {}
+            # Input file format: ancestral_promoter_name, real_match_rate, G4CR_seq
+            lines = input_file.readlines()
+            oldest_G4CR = True
             
-            input_lines = input_file.readlines()
-            gene_names.append(gene_name)
-            
-            for line in input_lines[1:]:
-                if line == "":
-                    continue
+            for line in lines:
                 line = line.split(",")
-                if line[0] == 'hg38':
-                    continue
-                    
-                if len(line) == 14:
-                    seq_name = line[0]
-                    match_rate = line[12]
-                    aligned_sequence = line[13]
-                    
-                    ancestral_aligned_sequences[seq_name] = aligned_sequence
-                    ancestral_match_rates[seq_name] = match_rate
-            index = 0    
-            # Check that there are enough actual nucleotides in the REGION, not the WHOLE PROMOTER
-            while index < len(ANCESTRAL_GENOMES):
-                ancestral_promoter_name = ANCESTRAL_GENOMES[index]
-                try:
-                    ancestral_promoter = ancestral_aligned_sequences[ancestral_promoter_name]
-                except KeyError: # Genome in question doesn't exist for this file
-                    index += 1
-                    continue
-                counter = 0
-                for i in range(start_index, end_index + 1):
-                    if ancestral_promoter[i] in NTS:
-                        counter += 1
-                if counter < 15:
-                    index += 1
-                else:
-                    break
+                
+                match_rates_for_this_G4CR.append(float(line[1]))
+                poly_vals_for_this_G4CR.append(line[2])
+                this_G4CR_lengths.append(line[3])
+                g_percentages_for_this_G4CR.append(line[4])
+                ntots_for_this_G4CR.append(line[5])
+                ntands_for_this_G4CR.append(line[6])
+                tm_maxes_for_this_G4CR.append(line[7])
+                tm_medians_for_this_G4CR.append(line[8])
+                tm_mins_for_this_G4CR.append(line[9])
+                ancestral_regions_for_this_G4CR.append(line[10])
+                
+                if oldest_G4CR:
+                    oldest_ancestral_G4CRs.append(line[10])
+                    oldest_G4CR = False
             
-            if ancestral_promoter == "": # RARE CASE: The modern G4CR was inserted after the human-chimp ancestor (_HP)
-                continue # These will be set aside and skipped to be studied individually in closer detail
             
-            # G4CR-INDEXED DATA
-            ancestral_G4CR_region = "".join([ancestral_promoter[i] for i in range(start_index, end_index) if ancestral_promoter[i] in NTS])
-            
-            ancestral_G4CR_regions.append(ancestral_G4CR_region) 
+            gene_names.append(gene_name)
             start_and_end_indices.append((start_index,end_index))
-            real_match_rates.append(ancestral_match_rates) # changed this from "match_rate" to now include all ancestral match rates
-            ancestral_seq_names.append(ancestral_promoter_name)
-
-    return gene_names, ancestral_G4CR_regions, start_and_end_indices, real_match_rates, ancestral_seq_names
+            real_match_rates.append(match_rates_for_this_G4CR)
+            poly_vals.append(poly_vals_for_this_G4CR)
+            G4CR_lengths.append(this_G4CR_lengths)
+            g_percentages.append(g_percentages_for_this_G4CR)
+            ntots.append(ntots_for_this_G4CR)
+            ntands.append(ntands_for_this_G4CR)
+            tm_maxes.append(tm_maxes_for_this_G4CR)
+            tm_medians.append(tm_medians_for_this_G4CR)
+            tm_mins.append(tm_mins_for_this_G4CR)
+            ancestral_G4CR_regions.append(ancestral_regions_for_this_G4CR) 
+            
+            
+    return gene_names, start_and_end_indices, real_match_rates, oldest_ancestral_G4CRs, poly_vals, G4CR_lengths, g_percentages, ntots, ntands, tm_maxes, tm_medians, tm_mins, ancestral_G4CR_regions 
 
 def align_simulated_outputs_with_ancestors(aligned_ancestral_G4CRs, sim_output_seqs):
     '''
@@ -215,15 +220,17 @@ def get_new_match_rates(sim_input_seqs, sim_output_seqs):
     
     return new_match_rates
 
-def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, sim_input_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices):
-    
-    output_filepath = f"/home/mcb/users/lnelso12/G4_EvoLSTM/thousand_outputs/chr{chrom}/{ancestral_seq_name}/{gene_name}_{start_index}_{end_index}.csv"
-    with open(output_filepath, "w") as output_file:
+def write_G4CR_to_output_file(output_filepath, gene_name, poly_vals, this_G4CR_length, g_percentage, this_ntot, this_ntand, this_tm_max, this_tm_median, this_tm_min, G4CR_seq, \
+    ancestral_seq_name, start_index, end_index, sim_output_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices):
+
+    chrom_filepath = f"{output_filepath}/{ancestral_seq_name}/{gene_name}_{start_index}_{end_index}.csv"
+    with open(chrom_filepath, "w") as output_file:
         
         # Headers outlining the REGIONAL, ISOMER, and UNIVERSAL fields
         output_file.write("SIMULATION FIELDS,num_g4crs,sim_match_rate,aligned_ancestral_seq,aligned_output_seq,max_ntot,sum_ntot,max_ntand,sum_ntands,max_tm_max,max_tm_median,max_tm_min,sum_g4cr_length,max_g4cr_length\n")
         output_file.write("G4CR FIELDS,g4cr_seq,nt_polymorphism,start_index,end_index,g4cr_length,g_percentage,ntot,ntand,tm_max,tm_median,tm_min\n")
-        output_file.write("UNIVERSAL FIELDS,ancestral_seq_name,real_match_rate,num_recursions,avg_num_g4crs,avg_sim_match_rate,avg_max_ntot,avg_sum_ntots,avg_max_ntand,avg_sum_ntands,avg_max_tm_max,avg_max_tm_median,avg_max_tm_min,avg_sum_g4cr_length,avg_max_g4cr_length,avg_g_percentage\n")
+        output_file.write("UNIVERSAL FIELDS,ancestral_seq_name,real_match_rate,num_recursions,avg_num_g4crs,\
+            avg_sim_match_rate,avg_max_ntot,avg_sum_ntots,avg_max_ntand,avg_sum_ntands,avg_max_tm_max,avg_max_tm_median,avg_max_tm_min,avg_sum_g4cr_length,avg_max_g4cr_length,avg_g_percentage\n")
         output_file.write("\n")
         
         sum_num_G4CRs = 0
@@ -243,24 +250,24 @@ def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index,
         # print(f"outputting G4CR: {gene_name}_{start_index}_{end_index} for ancestor {ancestral_seq_name}")
 
         seq_counter = 0
-        for z in range(len(sim_input_seqs_for_this_G4CR)):
+        for z in range(len(sim_output_seqs_for_this_G4CR)):
             
             if z in local_skipped_indices: # Simulation with undefined output
                 continue
             
-            sim_input_seq = sim_input_seqs_for_this_G4CR[z] # Use input, not output, because its branch length is closer to the real one
+            sim_input_seq = sim_output_seqs_for_this_G4CR[z] # Use input, not output, because its branch length is closer to the real one
             aligned_ancestor = aligned_ancestors_for_this_G4CR[z]
             
             # Split the lists to be able to replace mutations as needed
             aligned_ancestor = aligned_ancestors_for_this_G4CR[z]
-            sim_input = sim_input_seqs_for_this_G4CR[z]
+            sim_output = sim_output_seqs_for_this_G4CR[z]
             
             matches = 0
             ungapped_length = 0
             for j in range(len(aligned_ancestor)):
-                if aligned_ancestor[j] != "-" and aligned_ancestor[j] == sim_input[j]:
+                if aligned_ancestor[j] != "-" and aligned_ancestor[j] == sim_output[j]:
                     matches += 1
-                if aligned_ancestor[j] != "-" and sim_input[j] != "-":
+                if aligned_ancestor[j] != "-" and sim_output[j] != "-":
                     ungapped_length += 1
             
             # Skip simulations that have zero ungapped_length, i.e., that consist of all "-" characters, to avoid ZeroDivisionError below
@@ -309,7 +316,9 @@ def write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index,
             return
         print(f"Final match rate of {avg_sim_match_rate} calculated for ancestor {ancestral_seq_name}")
         print()
-        output_file.write(f"UNIVERSAL,{ancestral_seq_name},{real_match_rate},{num_recursions},{avg_num_G4CRs},{avg_sim_match_rate},{avg_max_ntot},{avg_sum_ntots},{avg_max_ntand},{avg_sum_ntands},{avg_max_Tm_max},{avg_max_Tm_median},{avg_max_Tm_min},{avg_sum_G4CR_length},{avg_max_G4CR_length},{avg_avg_g_percentage},{avg_max_g_percentage}\n")
+        output_file.write(f"UNIVERSAL,{ancestral_seq_name},{num_recursions},{avg_num_G4CRs},{avg_sim_match_rate},{avg_max_ntot},{avg_sum_ntots},{avg_max_ntand},{avg_sum_ntands},{avg_max_Tm_max},{avg_max_Tm_median},\
+            {avg_max_Tm_min},{avg_sum_G4CR_length},{avg_max_G4CR_length},{avg_avg_g_percentage},{avg_max_g_percentage}\n")
+        output_file.write(f"REAL,{ancestral_seq_name},{real_match_rate},{poly_vals},{this_G4CR_length},{g_percentage},{this_ntot},{this_ntand},{this_tm_max},{this_tm_median},{this_tm_min},{G4CR_seq}\n")
 
 def calc_match_rate(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, local_skipped_indices):
 
@@ -362,11 +371,18 @@ def desimulate_output_seq(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_t
             ancestor_char = aligned_ancestor[j]
             sim_char = sim_output[j]
             
+
             if ancestor_char == "-" or sim_char == "-": # insertion/deletion (indel)
-                if reversing_indel:
-                    continue
-                elif random.random() <= desimulating_distance:
+                
+                if random.random() <= desimulating_distance:
                         reversing_indel = True
+
+                # Assumes that there is never an index with both the ancestor and descendant containing a "-" gap
+                if reversing_indel and ancestor_char == "-":
+                    continue
+                elif reversing_indel and sim_char == "-":
+                    new_aligned_ancestor.append(ancestor_char)
+                    new_sim_output.append(ancestor_char)
                 else:
                     new_aligned_ancestor.append(ancestor_char)
                     new_sim_output.append(sim_char)
@@ -400,32 +416,37 @@ def retain_undefined_sims(sim_input_seqs, sim_output_seqs):
 
 def main():
     '''
-    BASIC IDEA -> start by assembling the input string of 1000 * each G4CR input (from files)
+    BASIC IDEA -> start by assembling the input string of num_sims * each G4CR input (from files)
     1. Run a single simulation
     2. Split output string, calculate whether each output G4CR is closer or further from real_match_rate than input
     3. Remove those that are FURTHER, run GReg on these, and output to files
     4. Build new string from those that are CLOSER, and repeat process from step 1 until string is empty
     '''
     
-    chrom = sys.argv[1]
-    gpu = sys.argv[2]
+    # chrom = sys.argv[1]
+    input_filepath = sys.argv[1]
+    output_filepath = sys.argv[2]
+    gpu = sys.argv[3]
+    num_sims = int(sys.argv[4])
     
     GQs, scores = get_GQs(MAX_LOOP, MAX_BULGE, MIN_TEMP)
     
-    chrom_filepath = f"/home/mcb/users/lnelso12/evoGReg/outputs_filtered/chr{chrom}"
+    # chrom_filepath = f"/home/mcb/users/lnelso12/evoGReg/outputs_filtered/chr{chrom}"
     
     # NOTE THAT EVERY OUTPUT OF THIS FUNCTION IS G4CR-INDEXED AND OF THE SAME LENGTH
-    gene_names, aligned_ancestral_G4CRs, start_and_end_indices, real_match_rates, ancestral_seq_names = read_input_files(chrom_filepath)
+    gene_names, start_and_end_indices, real_match_rates, aligned_ancestral_G4CRs, poly_vals, G4CR_lengths, g_percentages, ntots, ntands, tm_maxes, tm_medians, tm_mins, ancestral_G4CR_regions = read_input_files(input_filepath)
+    # NOTE on the line above: the "aligned_ancestral_G4CRs" only consists of the furthest-back ancestral aligned sequence, which we use as input to simulate on.
+    # Meanwhile, the "ancestral_G4CR_regions" is a dictionary containing the aligned sequences corresponding to EVERY ancestor for a given G4CR, to be written into the output file
     print("Successfully read all input files and stored their information to begin simulations")
     
     sim_input_seqs = [] # Will be passed in as input to simulation across every recursion
-    for i in range(len(aligned_ancestral_G4CRs)): # 1000 simulation inputs for each G4CR
-        sim_input_seqs.extend([aligned_ancestral_G4CRs[i] for _ in range(1000)])
+    for i in range(len(aligned_ancestral_G4CRs)): # num_sims simulation inputs for each G4CR
+        sim_input_seqs.extend([aligned_ancestral_G4CRs[i] for _ in range(num_sims)])
         
     global_skipped_indices = [set() for _ in range(len(aligned_ancestral_G4CRs))]
     
     aligned_ancestral_G4CRs = sim_input_seqs.copy() # Will be progressively aligned to simulation outputs at each recursion 
-    sim_input_seqs = "3333333333".join(sim_input_seqs) # length = num_G4CRs * 1000
+    sim_input_seqs = "3333333333".join(sim_input_seqs) # length = num_G4CRs * num_sims
     
     num_recursions = 0
     while sim_input_seqs != "":
@@ -448,32 +469,41 @@ def main():
         new_start_and_end_indices = []
         new_real_match_rates = []
         
-        for i in range(1000, len(new_match_rates)+1000, 1000):
+        for i in range(num_sims, len(new_match_rates)+num_sims, num_sims):
             
             # Note that certain new match rates are undefined because of length 0, so skip these and their corresponding attributes in other lists
             new_match_rates_for_this_G4CR = []
             num_new_match_rates = 0
-            local_skipped_indices = global_skipped_indices[int(i/1000)-1]
+            local_skipped_indices = global_skipped_indices[int(i/num_sims)-1]
             
-            for j in range(i-1000,i):
+            for j in range(i-num_sims,i):
                 new_match_rates_for_this_G4CR.append(new_match_rates[j])
                 if new_match_rates[j] != -1.0:
                     num_new_match_rates += 1
                 else:
                     local_skipped_indices.add(j)
             
-            if len(local_skipped_indices) == 1000: # Case where every simulation results in an undefined output for a given G4CR
+            if len(local_skipped_indices) == num_sims: # Case where every simulation results in an undefined output for a given G4CR
                 continue # These will be set aside and skipped to be studied individually in closer detail
             
             # The attributes below are different for every simulation
-            sim_output_seqs_for_this_G4CR = [sim_output_seqs[l] for l in range(i-1000,i)]
-            aligned_ancestors_for_this_G4CR = [aligned_ancestral_G4CRs[b] for b in range(i-1000,i)]
+            sim_output_seqs_for_this_G4CR = [sim_output_seqs[l] for l in range(i-num_sims,i)]
+            aligned_ancestors_for_this_G4CR = [aligned_ancestral_G4CRs[b] for b in range(i-num_sims,i)]
             
             # The attributes below are the same for all simulations of a given G4CR
-            real_match_rates_for_this_G4CR = real_match_rates[int(i/1000)-1]
-            gene_name = gene_names[int(i/1000)-1]
-            start_index = int(start_and_end_indices[int(i/1000)-1][0])
-            end_index = int(start_and_end_indices[int(i/1000)-1][1])
+            real_match_rates_for_this_G4CR = real_match_rates[int(i/num_sims)-1]
+            poly_vals_for_this_G4CR = poly_vals[int(i/num_sims)-1]
+            this_G4CR_lengths = G4CR_lengths[int(i/num_sims)-1]
+            g_percentages_for_this_G4CR = g_percentages[int(i/num_sims)-1]
+            ntots_for_this_G4CR = ntots[int(i/num_sims)-1]
+            ntands_for_this_G4CR = ntands[int(i/num_sims)-1]
+            tm_maxes_for_this_G4CR = tm_maxes[int(i/num_sims)-1]
+            tm_medians_for_this_G4CR = tm_medians[int(i/num_sims)-1]
+            tm_mins_for_this_G4CR = tm_mins[int(i/num_sims)-1]
+            ancestral_regions_for_this_G4CR = ancestral_G4CR_regions[int(i/num_sims)-1]
+            gene_name = gene_names[int(i/num_sims)-1]
+            start_index = int(start_and_end_indices[int(i/num_sims)-1][0])
+            end_index = int(start_and_end_indices[int(i/num_sims)-1][1])
             
             avg_new_match_rate = calc_match_rate(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_this_G4CR, local_skipped_indices)
             
@@ -481,9 +511,20 @@ def main():
             for ancestral_seq_name in real_match_rates_for_this_G4CR.keys():
                 
                 real_match_rate = float(real_match_rates_for_this_G4CR[ancestral_seq_name])
+                poly_val = poly_vals_for_this_G4CR[ancestral_seq_name]
+                G4CR_length = this_G4CR_lengths[ancestral_seq_name]
+                g_percentage = g_percentages_for_this_G4CR[ancestral_seq_name]
+                ntot = ntots_for_this_G4CR[ancestral_seq_name]
+                ntand = ntands_for_this_G4CR[ancestral_seq_name]
+                tm_max = tm_maxes_for_this_G4CR[ancestral_seq_name]
+                tm_median = tm_medians_for_this_G4CR[ancestral_seq_name]
+                tm_min = tm_mins_for_this_G4CR[ancestral_seq_name]
+                G4CR_seq = ancestral_regions_for_this_G4CR[ancestral_seq_name]
+                
                     
                 if real_match_rate == avg_new_match_rate: 
-                    write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, sim_output_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices)
+                    write_G4CR_to_output_file(output_filepath, gene_name, poly_vals, G4CR_length, g_percentage, ntot, ntand, tm_max, tm_median, tm_min, G4CR_seq, \
+                        ancestral_seq_name, start_index, end_index, sim_output_seqs_for_this_G4CR, aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices)
                     keys_to_remove.append(ancestral_seq_name)
                     
                 elif real_match_rate > avg_new_match_rate: # DE-SIMULATION
@@ -508,8 +549,8 @@ def main():
                         if counter == 500 or avg_new_sim_match_rates == -1:
                             break
                         desimulating_distance += 0.01
-                        
-                    write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, desimulated_sim_output_seqs_for_this_G4CR, desimulated_aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices)
+                    write_G4CR_to_output_file(output_filepath, gene_name, poly_vals, G4CR_length, g_percentage, ntot, ntand, tm_max, tm_median, tm_min, G4CR_seq, \
+                        ancestral_seq_name, start_index, end_index, desimulated_sim_output_seqs_for_this_G4CR, desimulated_aligned_ancestors_for_this_G4CR, GQs, scores, real_match_rate, num_recursions, local_skipped_indices)
                     keys_to_remove.append(ancestral_seq_name)
             
             for ancestral_seq_name in keys_to_remove:
@@ -533,5 +574,7 @@ def main():
         gene_names = new_gene_names
         start_and_end_indices = new_start_and_end_indices
 
-    print(f"The main() function ended with num_recursions value {num_recursions}\n")     
+    print(f"The main() function ended with num_recursions value {num_recursions}\n")    
+    
+     
 main()

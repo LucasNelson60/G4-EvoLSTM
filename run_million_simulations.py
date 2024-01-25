@@ -348,11 +348,18 @@ def desimulate_output_seq(aligned_ancestors_for_this_G4CR, sim_output_seqs_for_t
             ancestor_char = aligned_ancestor[j]
             sim_char = sim_output[j]
             
+            # Assumes that there is never an index with both the ancestor and descendant containing a "-" gap
             if ancestor_char == "-" or sim_char == "-": # insertion/deletion (indel)
-                if reversing_indel:
-                    continue
-                elif random.random() <= desimulating_distance:
+                
+                if random.random() <= desimulating_distance:
                         reversing_indel = True
+
+                # Assumes that there is never an index with both the ancestor and descendant containing a "-" gap
+                if reversing_indel and ancestor_char == "-":
+                    continue
+                elif reversing_indel and sim_char == "-":
+                    new_aligned_ancestor.append(ancestor_char)
+                    new_sim_output.append(ancestor_char)
                 else:
                     new_aligned_ancestor.append(ancestor_char)
                     new_sim_output.append(sim_char)
@@ -492,7 +499,7 @@ def main():
                     break
                 
             write_G4CR_to_output_file(chrom, gene_name, ancestral_seq_name, start_index, end_index, sim_output_seq, aligned_ancestral_G4CR, GQs, scores, real_match_rate, num_recursions, skipped_indices, sim_call_number, num_sims)
-                
+        
         num_recursions += 1
         
         sim_input_seq = "3333333333".join(new_sim_output_seq)
