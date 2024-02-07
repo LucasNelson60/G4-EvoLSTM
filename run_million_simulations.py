@@ -3,7 +3,7 @@ import sys
 import random
 import numpy as np
 from simulate import simulate
-from G4_greg import main as greg_main
+from greg import main as greg_main
 from get_GQs import get_GQs
 
 INPUT_G4CRs = {

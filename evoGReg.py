@@ -1,6 +1,6 @@
 # AUTHOR: Lucas Nelson
 import pandas as pd
-from greg import main as greg_main
+from old_greg import main as greg_main
 from get_GQs import get_GQs
 import sys
 import os

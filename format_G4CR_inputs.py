@@ -88,9 +88,10 @@ def format_input_files(chrom_filepath, output_filepath):
                         ancestral_match_rates[seq_name] = match_rate
                 
                 # Iterate through each line of information for the given gene
-                for G4CR_info in modern_G4CRs:
-                    start_index = int(G4CR_info[3])
-                    end_index = int(G4CR_info[4])
+                for i in range(len(modern_G4CRs)):
+                    modern_G4CR_info = modern_G4CRs[i]
+                    start_index = int(modern_G4CR_info[3])
+                    end_index = int(modern_G4CR_info[4])
 
                     # Expand the window being simulated to -20 and +20 beyond the start and end indices
                     if start_index >= 20 and end_index < 3979: 
@@ -132,9 +133,14 @@ def format_input_files(chrom_filepath, output_filepath):
                         continue
                     
                     this_output_filepath = f"{output_filepath}/{chrom}/{gene_name}_{start_index}_{end_index}.csv"
+                    
                     with open(this_output_filepath, "w") as output_file:
+                        
+                        oldest_ancestor = True
+                        oldest_ancestral_seq = ""
+                        
                         for ancestral_promoter_name in sorted(included_ancestral_genomes.keys(), reverse=True, key=lambda x: '' if x=='hg38' else x):
-                            real_match_rate = ancestral_match_rates[ancestral_promoter_name]
+                            
                             poly_vals = ancestral_polymorphism_vals[ancestral_promoter_name]
                             this_G4CR_length = G4CR_length_in_NTs[ancestral_promoter_name]
                             g_percentage = g_percentages[ancestral_promoter_name] 
@@ -144,12 +150,34 @@ def format_input_files(chrom_filepath, output_filepath):
                             this_tm_median = tm_median[ancestral_promoter_name]
                             this_tm_min = tm_min[ancestral_promoter_name]
                             G4CR_seq = included_ancestral_genomes[ancestral_promoter_name]
-                            output_file.write(f"{ancestral_promoter_name},{real_match_rate},{poly_vals},{this_G4CR_length},{g_percentage},{this_ntot},{this_ntand},{this_tm_max},{this_tm_median},{this_tm_min},{G4CR_seq}\n")
+                            
+                            if oldest_ancestor:
+                                
+                                oldest_ancestor = False
+                                oldest_ancestral_seq = ancestral_aligned_sequences[ancestral_promoter_name]
+                                oldest_real_match_rate = ancestral_match_rates[ancestral_promoter_name]
+                                
+                                output_file.write(f"{ancestral_promoter_name},{1.0},{poly_vals},{this_G4CR_length},{g_percentage},{this_ntot},{this_ntand},{this_tm_max},{this_tm_median},{this_tm_min},{G4CR_seq},{oldest_real_match_rate}\n")
+                            
+                            else: # If not oldest ancestor
+
+                                # compute the match rate between the two ENTIRE sequences here
+                                current_promoter = ancestral_aligned_sequences[ancestral_promoter_name] # guaranteed to be in this dict, by previous section
+                                num_matches = 0
+                                sequence_length = 0
+                                for i in range(4000):
+                                    if oldest_ancestral_seq[i] == current_promoter[i] and oldest_ancestral_seq[i] in NTS:
+                                        num_matches += 1
+                                    if oldest_ancestral_seq[i] in NTS:
+                                        sequence_length += 1
+                                match_rate_relative_to_oldest_ancestor = num_matches / sequence_length
+                                    
+                                output_file.write(f"{ancestral_promoter_name},{match_rate_relative_to_oldest_ancestor},{poly_vals},{this_G4CR_length},{g_percentage},{this_ntot},{this_ntand},{this_tm_max},{this_tm_median},{this_tm_min},{G4CR_seq}\n")
     
 
 def main():
     input_filepath = "/home/mcb/users/lnelso12/evoGReg/outputs"
-    output_filepath = "/home/mcb/users/lnelso12/evoGReg/outputs_formatted"
+    output_filepath = "/home/mcb/users/lnelso12/evoGReg/outputs_ancestral_formatted"
     format_input_files(input_filepath, output_filepath)
 
 main()
